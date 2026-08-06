@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolarGlide — Login</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <h1>☀️ SolarGlide</h1>
+            <p>Smart Parking System — Login</p>
+
+            <!-- Role Toggle -->
+            <div class="role-toggle">
+                <button type="button" class="btn btn-outline active" id="btnUser" onclick="setRole('user')">🚗
+                    User</button>
+                <button type="button" class="btn btn-outline" id="btnAdmin" onclick="setRole('admin')">🔑 Admin</button>
+            </div>
+
+            <!-- User Form -->
+            <form id="userForm" onsubmit="handleLogin(event, 'user')">
+                <div class="form-group">
+                    <label>Car Number / Number Plate</label>
+                    <input type="text" id="carNumber" placeholder="e.g. TEST1234" required>
+                </div>
+                <div class="form-group">
+                    <label>Email (Optional)</label>
+                    <input type="email" id="email" placeholder="your@email.com">
+                </div>
+                <button type="submit" class="btn btn-primary"
+                    style="width:100%; margin-top:12px; padding:14px; font-size:1.05rem;">Login →</button>
+            </form>
+
+            <!-- Admin Form (hidden by default) -->
+            <form id="adminForm" style="display:none;" onsubmit="handleLogin(event, 'admin')">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="adminUser" placeholder="admin" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="adminPass" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary"
+                    style="width:100%; margin-top:12px; padding:14px; font-size:1.05rem;">Login →</button>
+            </form>
+
+            <p id="loginError" style="color: var(--danger); margin-top:12px; font-size:0.85rem; display:none;"></p>
+        </div>
+    </div>
+
+    <script>
+        function setRole(r) {
+            document.getElementById('userForm').style.display = r === 'user' ? 'block' : 'none';
+            document.getElementById('adminForm').style.display = r === 'admin' ? 'block' : 'none';
+            document.getElementById('btnUser').classList.toggle('active', r === 'user');
+            document.getElementById('btnAdmin').classList.toggle('active', r === 'admin');
+        }
+
+        async function handleLogin(e, role) {
+            e.preventDefault();
+            const errorEl = document.getElementById('loginError');
+            errorEl.style.display = 'none';
+
+            let body;
+            if (role === 'user') {
+                body = {
+                    type: 'user',
+                    identifier: document.getElementById('carNumber').value.trim(),
+                    email: document.getElementById('email').value.trim()
+                };
+            } else {
+                body = {
+                    type: 'admin',
+                    identifier: document.getElementById('adminUser').value.trim(),
+                    password: document.getElementById('adminPass').value
+                };
+            }
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                const data = await res.json();
+                console.log('Login response:', data);
+
+                if (data.success) {
+                    if (data.role === 'admin') {
+                        window.location.href = 'admin.html';
+                    } else {
+                        localStorage.setItem('carNumber', body.identifier);
+                        window.location.href = 'dashboard.html';
+                    }
+                } else {
+                    errorEl.textContent = data.message || 'Login failed';
+                    errorEl.style.display = 'block';
+                }
+            } catch (err) {
+                errorEl.textContent = 'Server error — is the server running?';
+                errorEl.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+
+</html>

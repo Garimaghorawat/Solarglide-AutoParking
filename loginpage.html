@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parking Login/Signup</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+    body {
+      background: url('https://cdn11.bigcommerce.com/s-64cbb/product_images/uploaded_images/tgtechnicalservices-246300-parking-garage-safer-blogbanner1.jpg') no-repeat center center fixed;
+      background-size: cover;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .container {
+      max-width: 400px;
+      width: 90%;
+      padding: 30px;
+      background: rgba(0, 0, 0, 0.85);
+      border-radius: 15px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      color: white;
+      backdrop-filter: blur(5px);
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 25px;
+      color: #00d9ff;
+      font-size: 1.8em;
+    }
+    h2 i {
+      margin-right: 10px;
+    }
+    input {
+      width: 100%;
+      padding: 14px;
+      margin: 12px 0;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.95);
+      font-size: 1em;
+      transition: all 0.3s;
+    }
+    input:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(0,217,255,0.3);
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 20px;
+      background: #00d4ff;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 1.1em;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    button:hover {
+      background: #00b8e0;
+      transform: translateY(-2px);
+    }
+    button i {
+      margin-right: 8px;
+    }
+    hr {
+      margin: 30px 0;
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.2);
+    }
+    .role-select {
+      margin: 18px 0;
+      color: #fff;
+    }
+    .role-select label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    select {
+      width: 100%;
+      padding: 14px;
+      border-radius: 8px;
+      background-color: #f0f0f0;
+      border: none;
+      font-size: 1em;
+    }
+    @media (max-width: 480px) {
+      .container {
+        padding: 25px;
+      }
+      h2 {
+        font-size: 1.5em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2><i class="fas fa-sign-in-alt"></i> Login</h2>
+    <form id="loginForm">
+      <input type="text" id="loginUsername" placeholder="Username" required>
+      <input type="password" id="loginPassword" placeholder="Password" required>
+      <button type="submit"><i class="fas fa-arrow-right"></i> Login</button>
+    </form>
+
+    <hr>
+
+    <h2><i class="fas fa-user-plus"></i> Signup</h2>
+    <form id="signupForm">
+      <input type="text" id="signupUsername" placeholder="Username" required>
+      <input type="email" id="signupEmail" placeholder="Email" required>
+      <input type="password" id="signupPassword" placeholder="Password" required>
+      <div class="role-select">
+        <label for="userRole"><i class="fas fa-user-tag"></i> Account Type:</label>
+        <select id="userRole" required>
+          <option value="user">Regular User</option>
+          <option value="admin">Administrator</option>
+        </select>
+      </div>
+      <button type="submit"><i class="fas fa-user-check"></i> Signup</button>
+    </form>
+  </div>
+
+  <script>
+    // User database simulation
+    const users = JSON.parse(localStorage.getItem('parkingUsers')) || [
+      { username: 'admin', password: 'admin123', role: 'admin', email: 'admin@parking.com' }
+    ];
+
+    // Login handler
+    document.getElementById('loginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = document.getElementById('loginUsername').value;
+      const password = document.getElementById('loginPassword').value;
+      
+      const user = users.find(u => u.username === username && u.password === password);
+      
+      if (user) {
+        sessionStorage.setItem('currentUser', JSON.stringify(user));
+        window.location.href = user.role === 'admin' ? 'admin.html' : 'page2.html';
+      } else {
+        alert('Invalid credentials!');
+      }
+    });
+
+    // Signup handler
+    document.getElementById('signupForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const newUser = {
+        username: document.getElementById('signupUsername').value,
+        email: document.getElementById('signupEmail').value,
+        password: document.getElementById('signupPassword').value,
+        role: document.getElementById('userRole').value
+      };
+      
+      if (users.some(u => u.username === newUser.username)) {
+        alert('Username already exists!');
+        return;
+      }
+      
+      users.push(newUser);
+      localStorage.setItem('parkingUsers', JSON.stringify(users));
+      alert('Registration successful! Please login.');
+      document.getElementById('signupForm').reset();
+    });
+  </script>
+</body>
+</html>

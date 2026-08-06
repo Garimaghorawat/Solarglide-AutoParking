@@ -1,0 +1,82 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  background: url('https://canadianparking.ca/wp-content/uploads/mixed-use.jpg') no-repeat center center fixed;
+  background-size: cover;
+  color: #fff;
+  padding: 20px;
+}
+
+.dashboard {
+  max-width: 1100px;
+  margin: auto;
+  background-color: rgba(0, 0, 0, 0.85);
+  border-radius: 20px;
+  padding: 40px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+.dashboard h1 {
+  font-size: 3em;
+  margin-bottom: 30px;
+  text-align: center;
+  color: #ffc107;
+  text-shadow: 2px 2px #000;
+}
+
+.section {
+  margin: 40px 0;
+}
+
+.section h2 {
+  font-size: 1.8em;
+  color: #00d9ff;
+  margin-bottom: 20px;
+  text-shadow: 1px 1px #000;
+}
+
+.info p,
+.summary p {
+  margin: 10px 0;
+  font-size: 1.2em;
+}
+
+.slots-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+}
+
+.slot {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.2em;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+  position: relative;
+  border: 2px solid white;
+}
+
+.available {
+  background-color: #28a745;
+  animation: blink 1.2s infinite;
+}
+
+.booked {
+  background-color: #dc3545;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}

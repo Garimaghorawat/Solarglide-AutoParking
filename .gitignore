@@ -1,0 +1,10 @@
+node_modules/
+.env
+error.log
+parking.db
+parking.db-wal
+parking.db-shm
+server_log.txt
+capture_*.jpg
+db.json
+debug_*.js

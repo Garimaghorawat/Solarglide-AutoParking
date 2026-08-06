@@ -1,0 +1,143 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: #fdfdfd;
+  color: #333;
+}
+
+.container {
+  width: 90%;
+  max-width: 1200px;
+  margin: auto;
+}
+
+header {
+  background: linear-gradient(135deg, #008cff, #004aad);
+  color: white;
+  padding: 1.5rem 0;
+}
+
+.logo {
+  font-size: 1.8rem;
+  font-weight: bold;
+}
+.logo span {
+  color: #ffcb05;
+}
+
+.navbar {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+.navbar a {
+  text-decoration: none;
+  color: white;
+  font-weight: 500;
+}
+.btn {
+  background: #ffcb05;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 30px;
+  color: #000;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+.btn:hover {
+  background-color: #ffda3d;
+}
+
+/* Hero Section */
+.hero {
+  position: relative;
+  height: 90vh;
+  overflow: hidden;
+}
+.hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(65%);
+}
+.overlay {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.3);
+}
+.hero-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  text-align: center;
+}
+.hero-text h1 {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+.hero-text h1 span {
+  color: #ffcb05;
+}
+.hero-text p {
+  font-size: 1.2rem;
+  margin-bottom: 1.5rem;
+}
+
+/* About Section */
+.about {
+  padding: 3rem 0;
+  text-align: center;
+}
+.about h2 {
+  font-size: 2.2rem;
+  margin-bottom: 1rem;
+}
+.about p {
+  max-width: 800px;
+  margin: auto;
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #555;
+}
+
+/* Gallery */
+.gallery {
+  padding: 3rem 0;
+  background-color: #6697c7;
+}
+.gallery h2 {
+  text-align: center;
+  font-size: 2rem;
+  margin-bottom: 2rem;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+.grid img {
+  width: 100%;
+  border-radius: 12px;
+  transition: transform 0.4s ease;
+}
+.grid img:hover {
+  transform: scale(1.05);
+}
+
+/* Footer */
+footer {
+  background: #004aad;
+  color: white;
+  text-align: center;
+  padding: 1rem;
+  margin-top: 2rem;
+}

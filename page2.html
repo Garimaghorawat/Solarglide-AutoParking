@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parking Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+    body {
+      background: url('https://canadianparking.ca/wp-content/uploads/mixed-use.jpg') no-repeat center center fixed;
+      background-size: cover;
+      color: #fff;
+      padding: 20px;
+    }
+    .dashboard {
+      max-width: 1100px;
+      margin: auto;
+      background-color: rgba(0, 0, 0, 0.85);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .dashboard h1 {
+      font-size: 3em;
+      margin-bottom: 30px;
+      text-align: center;
+      color: #ffc107;
+      text-shadow: 2px 2px #000;
+    }
+    .section {
+      margin: 40px 0;
+    }
+    .section h2 {
+      font-size: 1.8em;
+      color: #00d9ff;
+      margin-bottom: 20px;
+      text-shadow: 1px 1px #000;
+    }
+    .info p, .summary p {
+      margin: 10px 0;
+      font-size: 1.2em;
+    }
+    .slots-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+      min-height: 120px;
+      border: 2px dashed rgba(255,255,255,0.2);
+      padding: 20px;
+      border-radius: 10px;
+    }
+    .slot {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 1.2em;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+      position: relative;
+      border: 2px solid white;
+    }
+    .available {
+      background-color: #28a745;
+      animation: blink 1.2s infinite;
+    }
+    .booked {
+      background-color: #dc3545;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    #loading {
+      text-align: center;
+      padding: 20px;
+      font-size: 1.5em;
+      color: #ffc107;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <h1>🚗 Parking System Dashboard</h1>
+    <div id="loading">Loading dashboard data...</div>
+
+    <div id="content" style="display: none;">
+      <div class="section info">
+        <h2>👤 User Details</h2>
+        <p><strong>Name:</strong> <span id="userName">-</span></p>
+        <p><strong>Entry Time:</strong> <span id="entryTime">-</span></p>
+        <p><strong>Allotted Slot:</strong> <span id="allottedSlot" class="slot">-</span></p>
+      </div>
+
+      <div class="section">
+        <h2>🟢 Available Slots</h2>
+        <div class="slots-container" id="availableSlots"></div>
+      </div>
+
+      <div class="section">
+        <h2>🔴 Booked Slots</h2>
+        <div class="slots-container" id="bookedSlots"></div>
+      </div>
+
+      <div class="section summary">
+        <h2>📊 Slot Summary</h2>
+        <p><strong>Total Slots:</strong> <span id="totalSlots">8</span></p>
+        <p><strong>Available:</strong> <span id="availableCount">0</span></p>
+        <p><strong>Booked:</strong> <span id="bookedCount">0</span></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Get current user from session
+    const currentUser = JSON.parse(sessionStorage.getItem('currentUser')) || {};
+    const username = currentUser.username || 'Unknown User';
+    document.getElementById('userName').textContent = username;
+
+    // Parking data structure
+    const parkingData = {
+      slots: Array(8).fill().map((_, i) => ({
+        id: `${i < 4 ? 'A' : 'B'}${(i % 4) + 1}`,
+        status: "available"
+      }))
+    };
+
+    function updateDashboard() {
+      try {
+        const availableSlots = document.getElementById('availableSlots');
+        const bookedSlots = document.getElementById('bookedSlots');
+        
+        availableSlots.innerHTML = '';
+        bookedSlots.innerHTML = '';
+
+        let availableCount = 0;
+        let bookedCount = 0;
+
+        parkingData.slots.forEach(slot => {
+          const slotElement = document.createElement('div');
+          slotElement.className = `slot ${slot.status}`;
+          slotElement.textContent = slot.id;
+          
+          if (slot.status === 'available') {
+            availableSlots.appendChild(slotElement);
+            availableCount++;
+          } else {
+            bookedSlots.appendChild(slotElement);
+            bookedCount++;
+          }
+        });
+
+        document.getElementById('availableCount').textContent = availableCount;
+        document.getElementById('bookedCount').textContent = bookedCount;
+        document.getElementById('totalSlots').textContent = parkingData.slots.length;
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+
+      } catch (error) {
+        console.error("Dashboard error:", error);
+        document.getElementById('loading').textContent = "Error loading data. Please refresh.";
+      }
+    }
+
+    async function fetchData() {
+      try {
+        const response = await fetch('/api/parking-data');
+        const csvData = await response.json();
+        
+        // Reset all slots to available
+        parkingData.slots.forEach(slot => slot.status = "available");
+        
+        // Process CSV data
+        csvData.forEach(entry => {
+          if (!entry['Exit Time'] && entry['Slot']) {
+            const slot = parkingData.slots.find(s => s.id === entry['Slot']);
+            if (slot) {
+              slot.status = "booked";
+              slot.vehicle = entry['Number Plate'];
+              
+              // Check if this entry belongs to current user
+              if (entry['Name'] === username) {
+                document.getElementById('allottedSlot').textContent = entry['Slot'];
+                document.getElementById('allottedSlot').className = "slot booked";
+                document.getElementById('entryTime').textContent = entry['Entry Time'] || '-';
+              }
+            }
+          }
+        });
+        
+        updateDashboard();
+      } catch (error) {
+        console.error("Fetch error:", error);
+        document.getElementById('loading').textContent = "Error loading parking data";
+      }
+    }
+
+    // Initialize dashboard
+    updateDashboard();
+    fetchData();
+    setInterval(fetchData, 2000);
+  </script>
+</body>
+</html>

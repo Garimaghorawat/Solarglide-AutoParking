@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolarGlide — Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <!-- Header -->
+    <header>
+        <div class="logo">☀️ SolarGlide</div>
+        <div class="user-info">
+            <div class="user-avatar" id="userAvatar">U</div>
+            <div class="user-meta">
+                <span class="name" id="headerCarNum">—</span>
+                <span class="role">User</span>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+        </div>
+    </header>
+
+    <div class="dashboard-container">
+
+        <!-- Stats Row -->
+        <div class="stats-grid four-col">
+            <div class="stat-card blue">
+                <div class="stat-label">🅿️ Total Slots</div>
+                <div class="stat-value" id="totalSlots">8</div>
+            </div>
+            <div class="stat-card green">
+                <div class="stat-label">✅ Available</div>
+                <div class="stat-value" id="availableSlots">—</div>
+            </div>
+            <div class="stat-card orange">
+                <div class="stat-label">🚗 Occupied</div>
+                <div class="stat-value" id="occupiedSlots">—</div>
+            </div>
+            <div class="stat-card teal">
+                <div class="stat-label">⏱️ Your Duration</div>
+                <div class="stat-value" id="liveDuration">—</div>
+            </div>
+        </div>
+
+        <!-- My Slot Banner (shows only if user has active parking) -->
+        <div id="mySlotBanner" class="my-slot-banner" style="display:none;">
+            <div class="my-slot-visual" id="mySlotVisual">—</div>
+            <div class="my-slot-details">
+                <h3>Your Parking</h3>
+                <div class="car-num" id="myCarNum">—</div>
+                <div class="entry-time" id="myEntryTime">Parked since —</div>
+                <div class="live-timer" id="liveTimer"
+                    style="font-size:0.9rem;color:var(--primary);font-weight:700;margin-top:4px;">⏱️ Calculating...
+                </div>
+            </div>
+            <div class="my-slot-actions">
+                <div style="text-align:right;margin-bottom:8px;">
+                    <span style="font-size:0.75rem;color:var(--text-muted);">Estimated Fee</span>
+                    <div style="font-size:1.5rem;font-weight:800;color:var(--warning);" id="estimatedFee">—</div>
+                </div>
+                <button class="btn btn-danger" id="exitBtn" onclick="startExit()">
+                    🚗 Exit Parking
+                </button>
+            </div>
+        </div>
+
+        <!-- Empty State (if no active parking) -->
+        <div id="emptyState" class="empty-state" style="display:none;">
+            <div class="icon">🅿️</div>
+            <h3>No Active Parking</h3>
+            <p>Your car is not currently parked. Drive in and your sensor will register you!</p>
+        </div>
+
+        <!-- Two-column layout: Slots + Info -->
+        <div class="content-grid">
+
+            <!-- Slot Grid -->
+            <div class="content-main">
+                <div class="section-header">
+                    <div class="section-title">🚗 Parking Slots</div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span class="legend-dot" style="--c:var(--success);">Available</span>
+                        <span class="legend-dot" style="--c:var(--danger);">Occupied</span>
+                        <span class="legend-dot" style="--c:var(--primary);">Yours</span>
+                    </div>
+                </div>
+
+                <div class="parking-grid" id="slotGrid">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+
+            <!-- Sidebar Info -->
+            <div class="content-sidebar">
+
+                <!-- Fee Card -->
+                <div class="panel fee-panel">
+                    <div class="panel-title">💰 Parking Rates</div>
+                    <div class="fee-info-row">
+                        <div class="fee-icon">🏷️</div>
+                        <div>
+                            <div class="fee-label">Base Rate</div>
+                            <div class="fee-amount">₹20</div>
+                        </div>
+                    </div>
+                    <div class="fee-info-row">
+                        <div class="fee-icon">⏰</div>
+                        <div>
+                            <div class="fee-label">Per Hour</div>
+                            <div class="fee-amount">₹10 <span
+                                    style="font-size:0.7rem;color:var(--text-muted);">/hr</span></div>
+                        </div>
+                    </div>
+                    <div class="fee-info-row">
+                        <div class="fee-icon">⏱️</div>
+                        <div>
+                            <div class="fee-label">Min. Charge</div>
+                            <div class="fee-amount">₹30</div>
+                        </div>
+                    </div>
+                    <div class="fee-formula">
+                        <span>Total = ₹20 + (Hours × ₹10)</span>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="panel">
+                    <div class="panel-title">📋 Quick Info</div>
+                    <div class="info-list">
+                        <div class="info-item">
+                            <span class="info-icon">🔒</span>
+                            <span>Razorpay secured payments</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-icon">🚧</span>
+                            <span>Automated gate opens on payment</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-icon">📡</span>
+                            <span>Sensor-based slot detection</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-icon">⏱️</span>
+                            <span>Real-time slot updates every 5s</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Payment Modal -->
+    <div class="modal" id="paymentModal">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+
+            <!-- Steps Indicator -->
+            <div class="payment-steps">
+                <div class="step" id="step1indicator">
+                    <div class="step-number">1</div>
+                    <span>Calculate</span>
+                </div>
+                <div class="step-line" id="line1"></div>
+                <div class="step" id="step2indicator">
+                    <div class="step-number">2</div>
+                    <span>Pay</span>
+                </div>
+                <div class="step-line" id="line2"></div>
+                <div class="step" id="step3indicator">
+                    <div class="step-number">3</div>
+                    <span>Gate</span>
+                </div>
+            </div>
+
+            <!-- Step 1: Fee Calculation -->
+            <div class="payment-step active" id="step1">
+                <h3 style="margin-bottom:16px; font-size:1rem;">Fee Breakdown</h3>
+                <div id="feeDetails">
+                    <div class="fee-row">
+                        <span>Duration</span>
+                        <span id="feeDuration">—</span>
+                    </div>
+                    <div class="fee-row">
+                        <span>Base Rate</span>
+                        <span>₹20</span>
+                    </div>
+                    <div class="fee-row">
+                        <span>Hourly Charge</span>
+                        <span id="feeHourly">—</span>
+                    </div>
+                    <div class="fee-row total">
+                        <span>Total</span>
+                        <span id="feeTotal">—</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary" style="width:100%; margin-top:20px;" onclick="openRazorpayCheckout()">
+                    💳 Pay with Razorpay
+                </button>
+            </div>
+
+            <!-- Step 2: Processing -->
+            <div class="payment-step" id="step2">
+                <div style="text-align:center; padding:20px 0;">
+                    <div class="spinner"></div>
+                    <p style="margin-top:16px; color:var(--text-muted);">Verifying payment...</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Gate Open -->
+            <div class="payment-step" id="step3">
+                <div class="gate-success">
+                    <div class="gate-icon-wrapper">
+                        <div class="gate-ripple"></div>
+                        <div class="gate-ripple" style="animation-delay:0.6s;"></div>
+                        <div class="gate-icon">🚧</div>
+                    </div>
+                    <h3 style="margin:16px 0 8px;">Payment Successful!</h3>
+                    <div class="gate-status-badge open">
+                        <span class="gate-dot"></span>
+                        GATE OPEN
+                    </div>
+                    <p style="margin-top:16px; font-size:0.85rem; color:var(--text-muted);">
+                        Drive out safely. Gate closes in 30 seconds.
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script src="js/main.js"></script>
+</body>
+
+</html>

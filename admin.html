@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Admin Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+    body {
+      background: url('https://canadianparking.ca/wp-content/uploads/mixed-use.jpg') no-repeat center center fixed;
+      background-size: cover;
+      color: #fff;
+      padding: 20px;
+    }
+    .dashboard {
+      max-width: 1100px;
+      margin: auto;
+      background-color: rgba(0, 0, 0, 0.85);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .dashboard h1 {
+      font-size: 3em;
+      margin-bottom: 30px;
+      text-align: center;
+      color: #ffc107;
+      text-shadow: 2px 2px #000;
+    }
+    .section {
+      margin: 40px 0;
+    }
+    .section h2 {
+      font-size: 1.8em;
+      color: #00d9ff;
+      margin-bottom: 20px;
+      text-shadow: 1px 1px #000;
+    }
+    .nav-link {
+      display: inline-block;
+      margin: 10px 0;
+      padding: 10px 20px;
+      background-color: #00d4ff;
+      color: #000;
+      text-decoration: none;
+      border-radius: 5px;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    .nav-link:hover {
+      background-color: #00b8e0;
+    }
+    .users-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    .users-table th, .users-table td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .users-table th {
+      background-color: rgba(0, 212, 255, 0.2);
+      color: #00d4ff;
+    }
+    .users-table tr:hover {
+      background-color: rgba(255,255,255,0.05);
+    }
+    .role-admin {
+      color: #ffc107;
+      font-weight: bold;
+    }
+    .role-user {
+      color: #00d4ff;
+    }
+    .badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
+    .admin-badge {
+      background-color: rgba(255, 193, 7, 0.2);
+    }
+    .user-badge {
+      background-color: rgba(0, 212, 255, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <h1><i class="fas fa-crown"></i> Admin Dashboard</h1>
+    
+    <div class="section">
+      <h2><i class="fas fa-bolt"></i> Quick Actions</h2>
+      <a href="page2.html?fromAdmin=true" class="nav-link">
+        <i class="fas fa-car"></i> View Live Parking Dashboard
+      </a>
+    </div>
+
+    <div class="section">
+      <h2><i class="fas fa-users"></i> User Management</h2>
+      <table class="users-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="usersList">
+          <!-- Users will be populated here by JavaScript -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Admin access check
+    const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+    if (!currentUser || currentUser.role !== 'admin') {
+      window.location.href = 'login.html';
+    }
+
+    // Load and display all users
+    function loadUsers() {
+      const users = JSON.parse(localStorage.getItem('parkingUsers')) || [];
+      const usersList = document.getElementById('usersList');
+      
+      usersList.innerHTML = '';
+      
+      if (users.length === 0) {
+        usersList.innerHTML = '<tr><td colspan="4" style="text-align: center;">No users found</td></tr>';
+        return;
+      }
+      
+      users.forEach(user => {
+        const row = document.createElement('tr');
+        
+        row.innerHTML = `
+          <td>${user.username}</td>
+          <td>${user.email || 'N/A'}</td>
+          <td>
+            <span class="badge ${user.role === 'admin' ? 'admin-badge' : 'user-badge'}">
+              <i class="fas ${user.role === 'admin' ? 'fa-shield-alt' : 'fa-user'}"></i>
+              ${user.role === 'admin' ? 'Administrator' : 'Regular User'}
+            </span>
+          </td>
+          <td>
+            <button class="nav-link" onclick="editUser('${user.username}')" style="padding: 5px 10px; margin-right: 5px;">
+              <i class="fas fa-edit"></i> Edit
+            </button>
+            ${user.username !== 'admin' ? `
+            <button class="nav-link" onclick="deleteUser('${user.username}')" style="padding: 5px 10px; background-color: #dc3545;">
+              <i class="fas fa-trash"></i> Delete
+            </button>
+            ` : ''}
+          </td>
+        `;
+        
+        usersList.appendChild(row);
+      });
+    }
+
+    // Edit user function
+    function editUser(username) {
+      const users = JSON.parse(localStorage.getItem('parkingUsers')) || [];
+      const user = users.find(u => u.username === username);
+      
+      if (user) {
+        const newRole = prompt(`Change role for ${username} (admin/user):`, user.role);
+        if (newRole && (newRole === 'admin' || newRole === 'user')) {
+          user.role = newRole;
+          localStorage.setItem('parkingUsers', JSON.stringify(users));
+          loadUsers();
+          alert('User role updated successfully!');
+        }
+      }
+    }
+
+    // Delete user function
+    function deleteUser(username) {
+      if (confirm(`Are you sure you want to delete ${username}?`)) {
+        let users = JSON.parse(localStorage.getItem('parkingUsers')) || [];
+        users = users.filter(u => u.username !== username);
+        localStorage.setItem('parkingUsers', JSON.stringify(users));
+        loadUsers();
+        alert('User deleted successfully!');
+      }
+    }
+
+    // Load users when page loads
+    document.addEventListener('DOMContentLoaded', loadUsers);
+  </script>
+</body>
+</html>
