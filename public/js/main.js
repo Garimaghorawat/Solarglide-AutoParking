@@ -4,6 +4,7 @@
 
 const API = '';
 let myCarNumber = '';
+let userAuthToken = '';
 let currentOrder = null;
 let myEntryTimeRaw = null;
 let timerInterval = null;
@@ -14,6 +15,8 @@ const HOURLY_RATE = 10;
 // ====== Init ======
 function init() {
     myCarNumber = localStorage.getItem('carNumber') || '';
+    userAuthToken = localStorage.getItem('authToken') || '';
+
     if (!myCarNumber) { window.location.href = 'login.html'; return; }
 
     document.getElementById('headerCarNum').textContent = myCarNumber;
@@ -23,17 +26,27 @@ function init() {
     setInterval(loadDashboard, 5000);
 }
 
+// ====== Auth Fetch Helper ======
+function authHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (userAuthToken) {
+        headers['Authorization'] = 'Bearer ' + userAuthToken;
+    }
+    return headers;
+}
+
 // ====== Load Dashboard ======
 async function loadDashboard() {
     try {
         const [slots, mySlotRes] = await Promise.all([
             fetch(API + '/api/slots').then(r => r.json()),
-            fetch(API + '/api/my-slot?carNumber=' + myCarNumber).then(r => r.json())
+            fetch(API + '/api/my-slot?carNumber=' + encodeURIComponent(myCarNumber), { headers: authHeaders() }).then(r => r.json())
         ]);
 
         renderSlotGrid(slots, mySlotRes);
         renderMySlotBanner(mySlotRes);
         renderStats(slots);
+        loadMyPreBookings();
     } catch (err) {
         console.error('Load error:', err);
     }
@@ -81,6 +94,8 @@ function renderSlotGrid(slots, mySlot) {
         let entryTimeHtml = '';
         let durationHtml = '';
 
+        const isMyReservation = slot.status === 'reserved' && slot.reservation && slot.reservation['Number Plate'] === myCarNumber;
+
         if (isMine) {
             cls += ' my-slot';
             badgeHtml = '<span class="slot-badge my-badge">YOURS</span>';
@@ -89,6 +104,11 @@ function renderSlotGrid(slots, mySlot) {
                 entryTimeHtml = `<div class="slot-entry-time" style="font-size:0.65rem;color:#666;margin-top:2px;">🕐 ${mySlot.slot['Entry Time']}</div>`;
                 durationHtml = `<div class="slot-duration" style="font-size:0.6rem;color:var(--primary);font-weight:600;margin-top:2px;">⏱️ ${calcDurationStr(mySlot.slot['Entry Time'])}</div>`;
             }
+        } else if (isMyReservation) {
+            cls += ' my-slot';
+            badgeHtml = '<span class="slot-badge my-badge">YOUR RESERVATION</span>';
+            carNumberHtml = `<div class="slot-car-number" style="color:var(--primary);">${myCarNumber}</div>`;
+            entryTimeHtml = `<div class="slot-entry-time" style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;">📅 Reserved (${slot.reservation['Booking Code']})</div>`;
         } else if (isBooked) {
             cls += ' booked';
             badgeHtml = '<span class="slot-badge booked-badge">OCCUPIED</span>';
@@ -96,6 +116,14 @@ function renderSlotGrid(slots, mySlot) {
             if (slot.entry && slot.entry['Entry Time']) {
                 entryTimeHtml = `<div class="slot-entry-time" style="font-size:0.65rem;color:#666;margin-top:2px;">🕐 ${slot.entry['Entry Time']}</div>`;
                 durationHtml = `<div class="slot-duration" style="font-size:0.6rem;color:#e67e22;font-weight:600;margin-top:2px;">⏱️ ${calcDurationStr(slot.entry['Entry Time'])}</div>`;
+            }
+        } else if (slot.status === 'reserved') {
+            cls += ' reserved';
+            badgeHtml = '<span class="slot-badge reserved-badge">RESERVED</span>';
+            carNumberHtml = slot.reservation ? `<div class="slot-car-number" style="color:var(--warning);">${slot.reservation['Number Plate']}</div>` : '';
+            if (slot.reservation && slot.reservation['Start Time']) {
+                const timeOnly = slot.reservation['Start Time'].split(' ')[1] || '';
+                entryTimeHtml = `<div class="slot-entry-time" style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;">📅 Starts ${timeOnly}</div>`;
             }
         } else {
             cls += ' available';
@@ -297,8 +325,196 @@ function closeModal() {
     setStep(1);
 }
 
+// ====== Pre-Booking Management ======
+
+function openPreBookingModal() {
+    const modal = document.getElementById('preBookingModal');
+    if (!modal) return;
+
+    document.getElementById('bookingCarPlate').value = myCarNumber;
+
+    // Set min date to today
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.getElementById('bookingDate');
+    dateInput.min = today;
+    if (!dateInput.value) dateInput.value = today;
+
+    // Set default time to next 30 mins rounded
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 30);
+    const hours = String(now.getHours()).padStart(2, '0');
+    const mins = String(Math.floor(now.getMinutes() / 15) * 15).padStart(2, '0');
+    const timeInput = document.getElementById('bookingTime');
+    if (!timeInput.value) timeInput.value = `${hours}:${mins}`;
+
+    updateEstimatedFee();
+    document.getElementById('bookingError').style.display = 'none';
+    modal.style.display = 'flex';
+}
+
+function closePreBookingModal() {
+    const modal = document.getElementById('preBookingModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function updateEstimatedFee() {
+    const duration = parseInt(document.getElementById('bookingDuration').value || 2, 10);
+    const fee = BASE_RATE + (duration * HOURLY_RATE);
+    const feeEl = document.getElementById('bookingEstimatedFee');
+    if (feeEl) feeEl.textContent = '₹' + fee;
+}
+
+async function handlePreBookingSubmit(e) {
+    e.preventDefault();
+    const btn = document.getElementById('bookSubmitBtn');
+    const errEl = document.getElementById('bookingError');
+    errEl.style.display = 'none';
+
+    const arrivalDate = document.getElementById('bookingDate').value;
+    const arrivalTime = document.getElementById('bookingTime').value;
+    const durationHours = parseInt(document.getElementById('bookingDuration').value, 10);
+
+    btn.disabled = true;
+    btn.textContent = 'Allocating Optimal Slot...';
+
+    try {
+        const res = await fetch(API + '/api/pre-booking/create', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({
+                arrivalDate,
+                arrivalTime,
+                durationHours
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.success && data.booking) {
+            closePreBookingModal();
+            showBookingPass(data.booking);
+            loadDashboard();
+        } else {
+            errEl.textContent = data.message || 'Failed to allocate slot';
+            errEl.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('Booking submission error:', err);
+        errEl.textContent = 'Server communication error';
+        errEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⚡ Auto-Allocate & Confirm Booking';
+    }
+}
+
+function showBookingPass(booking) {
+    document.getElementById('passBookingCode').textContent = booking.booking_code;
+    document.getElementById('passSlotId').textContent = 'Slot ' + booking.slot_id;
+    document.getElementById('passCarPlate').textContent = booking.car_number;
+    document.getElementById('passTimeWindow').textContent = `${booking.start_time} - ${booking.end_time}`;
+
+    if (booking.qr_data) {
+        document.getElementById('passQrImage').src = booking.qr_data;
+    } else {
+        document.getElementById('passQrImage').src = '';
+    }
+
+    document.getElementById('bookingPassModal').style.display = 'flex';
+}
+
+function closePassModal() {
+    document.getElementById('bookingPassModal').style.display = 'none';
+}
+
+async function loadMyPreBookings() {
+    const listEl = document.getElementById('preBookingsList');
+    if (!listEl) return;
+
+    try {
+        const res = await fetch(API + '/api/pre-booking/my-bookings?carNumber=' + encodeURIComponent(myCarNumber), {
+            headers: authHeaders()
+        });
+        const data = await res.json();
+
+        if (!data.success || !data.bookings || data.bookings.length === 0) {
+            listEl.innerHTML = `
+                <div style="text-align:center; padding:18px 12px; color:var(--text-muted); font-size:0.85rem;">
+                    No upcoming reservations. Click <strong>+ New Booking</strong> to reserve your spot!
+                </div>
+            `;
+            return;
+        }
+
+        listEl.innerHTML = data.bookings.map(b => {
+            const isConfirmed = b.status === 'confirmed';
+            const statusColor = b.status === 'confirmed' ? 'var(--warning)' :
+                                b.status === 'checked_in' ? 'var(--primary)' :
+                                b.status === 'completed' ? 'var(--success)' : 'var(--text-muted)';
+            const statusLabel = b.status.toUpperCase().replace('_', ' ');
+
+            const qrPayload = JSON.stringify(b).replace(/"/g, '&quot;');
+
+            return `
+                <div class="pre-booking-item" style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid var(--glass-border); flex-wrap:wrap; gap:10px;">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <strong style="color:var(--primary); font-size:0.95rem;">${b.booking_code}</strong>
+                            <span style="font-size:0.7rem; font-weight:700; color:${statusColor}; background:rgba(0,0,0,0.04); padding:2px 8px; border-radius:10px; border:1px solid ${statusColor};">
+                                ${statusLabel}
+                            </span>
+                            <span style="font-weight:700; font-size:0.85rem; color:var(--text);">🅿️ Slot ${b.slot_id}</span>
+                        </div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:3px;">
+                            📅 ${b.start_time} to ${b.end_time} (${b.duration_hours}h · ₹${b.estimated_fee})
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button class="btn btn-outline btn-sm" onclick='showBookingPass(${qrPayload})' style="font-size:0.75rem; padding:6px 12px;">
+                            🎟️ View Pass
+                        </button>
+                        ${isConfirmed ? `
+                            <button class="btn btn-sm" onclick="cancelBooking(${b.id}, '${b.booking_code}')" style="background:var(--danger-dim); color:var(--danger); border:1px solid var(--danger); font-size:0.75rem; padding:6px 12px;">
+                                ✖ Cancel
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error('Error loading pre-bookings:', err);
+    }
+}
+
+async function cancelBooking(bookingId, bookingCode) {
+    if (!confirm(`Are you sure you want to cancel reservation ${bookingCode}?`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(API + '/api/pre-booking/cancel', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({ bookingId })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            alert(`Booking ${bookingCode} cancelled successfully.`);
+            loadDashboard();
+        } else {
+            alert(data.message || 'Failed to cancel booking');
+        }
+    } catch (err) {
+        alert('Server error cancelling booking');
+    }
+}
+
 function logout() {
     localStorage.removeItem('carNumber');
+    localStorage.removeItem('authToken');
     window.location.href = 'login.html';
 }
 

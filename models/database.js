@@ -13,6 +13,7 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 const csv = require('csv-parser');
+const moment = require('moment');
 
 const DB_PATH = path.join(__dirname, '..', process.env.DB_PATH || 'parking.db');
 const CSV_PATH = path.join(__dirname, '..', 'parking_log.csv');
@@ -92,6 +93,27 @@ function initTables() {
             gate_status TEXT DEFAULT 'open',
             timestamp TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS pre_bookings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_code TEXT UNIQUE NOT NULL,
+            car_number TEXT NOT NULL,
+            slot_id TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            duration_hours INTEGER NOT NULL,
+            estimated_fee REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'confirmed',
+            qr_data TEXT,
+            session_id INTEGER,
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (slot_id) REFERENCES slots(id),
+            FOREIGN KEY (session_id) REFERENCES parking_sessions(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pre_bookings_car ON pre_bookings(car_number);
+        CREATE INDEX IF NOT EXISTS idx_pre_bookings_status ON pre_bookings(status);
+        CREATE INDEX IF NOT EXISTS idx_pre_bookings_slot_window ON pre_bookings(slot_id, start_time, end_time);
     `);
 
     console.log('✅ Database tables initialized');
@@ -258,7 +280,7 @@ function syncCsvToDb() {
 
                     if (!existingRow) {
                         // New row — insert it
-                        insert.run(
+                        const insertResult = insert.run(
                             row.Name || '',
                             carNumber,
                             row.Slot,
@@ -268,12 +290,46 @@ function syncCsvToDb() {
                             fee
                         );
                         newCount++;
+
+                        // Link matching pre-booking if exists
+                        try {
+                            const newSessionId = insertResult.lastInsertRowid;
+                            const preBooking = database.prepare(`
+                                SELECT id FROM pre_bookings
+                                WHERE car_number = ?
+                                  AND status IN ('confirmed', 'checked_in')
+                                  AND datetime(start_time, '-45 minutes') <= datetime(?)
+                                  AND datetime(end_time, '+60 minutes') >= datetime(?)
+                                ORDER BY start_time ASC LIMIT 1
+                            `).get(carNumber, entryTime, entryTime);
+
+                            if (preBooking) {
+                                database.prepare(`
+                                    UPDATE pre_bookings
+                                    SET status = 'checked_in', session_id = ?
+                                    WHERE id = ?
+                                `).run(newSessionId, preBooking.id);
+                            }
+                        } catch (e) {
+                            // Non-blocking
+                        }
                     } else {
                         // Existing row — check if exit_time changed
                         const dbExit = existingRow.exit_time || null;
                         if (exitTime && exitTime !== dbExit) {
                             update.run(exitTime, durationMins, fee, existingRow.id);
                             updateCount++;
+
+                            // Complete matching pre-booking if linked
+                            try {
+                                database.prepare(`
+                                    UPDATE pre_bookings
+                                    SET status = 'completed'
+                                    WHERE session_id = ? AND status = 'checked_in'
+                                `).run(existingRow.id);
+                            } catch (e) {
+                                // Non-blocking
+                            }
                         }
                     }
                 });
@@ -357,7 +413,52 @@ function startCsvSync() {
 
 function getAllSlots() {
     const database = getDb();
-    return database.prepare('SELECT * FROM slots ORDER BY id').all();
+    expireOverdueBookings();
+
+    const slots = database.prepare('SELECT * FROM slots ORDER BY CAST(id AS INTEGER) ASC').all();
+    const now = moment().format('YYYY-MM-DD HH:mm:ss');
+
+    return slots.map(slot => {
+        if (slot.status === 'booked') {
+            return {
+                ...slot,
+                physical_status: 'occupied',
+                is_reserved: false
+            };
+        }
+
+        // Check if there is an active/imminent confirmed pre-booking (within next 45 minutes or currently active)
+        const booking = database.prepare(`
+            SELECT booking_code, car_number, start_time, end_time FROM pre_bookings
+            WHERE slot_id = ?
+              AND status = 'confirmed'
+              AND datetime(start_time, '-45 minutes') <= datetime(?)
+              AND datetime(end_time) >= datetime(?)
+            ORDER BY start_time ASC LIMIT 1
+        `).get(slot.id, now, now);
+
+        if (booking) {
+            return {
+                id: slot.id,
+                status: 'reserved',
+                physical_status: 'empty',
+                is_reserved: true,
+                current_car: null,
+                current_entry_time: null,
+                reserved_car: booking.car_number,
+                reserved_start: booking.start_time,
+                reserved_end: booking.end_time,
+                reserved_booking_code: booking.booking_code
+            };
+        }
+
+        return {
+            ...slot,
+            status: 'available',
+            physical_status: 'empty',
+            is_reserved: false
+        };
+    });
 }
 
 function getActiveSession(carNumber) {
@@ -388,6 +489,17 @@ function updateSessionExit(id, exitTime, durationMins, fee) {
     // Write exit time back to CSV so it stays in sync
     if (check) {
         updateCsvExitTime(check.car_number, check.slot_id, exitTime);
+    }
+
+    // Complete linked pre-booking if present
+    try {
+        database.prepare(`
+            UPDATE pre_bookings
+            SET status = 'completed'
+            WHERE session_id = ? AND status = 'checked_in'
+        `).run(id);
+    } catch (e) {
+        // Non-blocking
     }
 
     refreshSlotStatus();
@@ -546,6 +658,395 @@ function createUser(username, password, email, role, carNumber) {
     }
 }
 
+// ==========================================
+// Pre-Booking & Automatic Slot Allocation
+// ==========================================
+
+/**
+ * Automatically expire bookings where user didn't arrive within 15-minute grace period
+ */
+function expireOverdueBookings() {
+    const database = getDb();
+    try {
+        const result = database.prepare(`
+            UPDATE pre_bookings
+            SET status = 'expired'
+            WHERE status = 'confirmed'
+              AND datetime('now', 'localtime') > datetime(start_time, '+15 minutes')
+        `).run();
+
+        if (result.changes > 0) {
+            console.log(`⏰ Auto-expired ${result.changes} overdue pre-booking(s) past 15-min grace period`);
+        }
+        return result.changes;
+    } catch (e) {
+        console.error('Error in expireOverdueBookings:', e.message);
+        return 0;
+    }
+}
+
+/**
+ * Atomically create pre-booking with automatic slot allocation (Slots 1-6)
+ */
+function createPreBookingAtomic({ carNumber, startTime, endTime, durationHours, estimatedFee }) {
+    const database = getDb();
+
+    // Run in a synchronous SQLite transaction (immediate lock prevents race conditions)
+    const tx = database.transaction(() => {
+        // 1. Expire any overdue bookings first
+        expireOverdueBookings();
+
+        // 2. Prevent same vehicle from double booking in overlapping window
+        const vehicleConflict = database.prepare(`
+            SELECT booking_code, start_time, end_time FROM pre_bookings
+            WHERE car_number = ?
+              AND status IN ('confirmed', 'checked_in')
+              AND datetime(start_time, '-15 minutes') < datetime(?)
+              AND datetime(end_time, '+15 minutes') > datetime(?)
+            LIMIT 1
+        `).get(carNumber, endTime, startTime);
+
+        if (vehicleConflict) {
+            return {
+                success: false,
+                message: `Vehicle ${carNumber} already has active booking ${vehicleConflict.booking_code} (${vehicleConflict.start_time} to ${vehicleConflict.end_time}).`
+            };
+        }
+
+        // 3. Scan slots 1 to 6 in priority order (1 is closest to gate)
+        const slots = database.prepare('SELECT id FROM slots ORDER BY CAST(id AS INTEGER) ASC').all();
+        let allocatedSlot = null;
+
+        const now = moment().format('YYYY-MM-DD HH:mm:ss');
+        const isImmediate = moment(startTime).diff(moment(now), 'minutes') < 30;
+
+        for (const slot of slots) {
+            // Check if slot has conflicting pre-bookings in this window (with 15-min buffer)
+            const slotConflict = database.prepare(`
+                SELECT id FROM pre_bookings
+                WHERE slot_id = ?
+                  AND status IN ('confirmed', 'checked_in')
+                  AND datetime(start_time, '-15 minutes') < datetime(?)
+                  AND datetime(end_time, '+15 minutes') > datetime(?)
+                LIMIT 1
+            `).get(slot.id, endTime, startTime);
+
+            if (slotConflict) continue;
+
+            // If the booking starts soon (<30 mins from now), check if physically occupied
+            if (isImmediate) {
+                const physicallyOccupied = database.prepare(`
+                    SELECT id FROM parking_sessions
+                    WHERE slot_id = ? AND (exit_time IS NULL OR exit_time = '')
+                    LIMIT 1
+                `).get(slot.id);
+
+                if (physicallyOccupied) continue;
+            }
+
+            // Slot is available!
+            allocatedSlot = slot.id;
+            break;
+        }
+
+        if (!allocatedSlot) {
+            return {
+                success: false,
+                message: 'All parking slots are fully booked for the requested time window. Please try another time.'
+            };
+        }
+
+        // Generate unique 5-digit booking code
+        let bookingCode;
+        while (true) {
+            const rand = Math.floor(10000 + Math.random() * 90000);
+            bookingCode = `SG-${rand}`;
+            const exists = database.prepare('SELECT id FROM pre_bookings WHERE booking_code = ?').get(bookingCode);
+            if (!exists) break;
+        }
+
+        const insert = database.prepare(`
+            INSERT INTO pre_bookings (booking_code, car_number, slot_id, start_time, end_time, duration_hours, estimated_fee, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')
+        `).run(bookingCode, carNumber, allocatedSlot, startTime, endTime, durationHours, estimatedFee);
+
+        const newBooking = database.prepare('SELECT * FROM pre_bookings WHERE id = ?').get(insert.lastInsertRowid);
+
+        return {
+            success: true,
+            booking: newBooking
+        };
+    });
+
+    return tx();
+}
+
+/**
+ * Walk-in slot allocation: assigns a free slot that does NOT have an upcoming booking starting within 60 minutes
+ */
+function findAvailableSlotForWalkIn(currentTime) {
+    const database = getDb();
+    expireOverdueBookings();
+
+    const nowStr = currentTime || moment().format('YYYY-MM-DD HH:mm:ss');
+    const protectionWindowEnd = moment(nowStr).add(60, 'minutes').format('YYYY-MM-DD HH:mm:ss');
+
+    const slots = database.prepare('SELECT id FROM slots ORDER BY CAST(id AS INTEGER) ASC').all();
+
+    for (const slot of slots) {
+        // 1. Must not be currently occupied physically
+        const isOccupied = database.prepare(`
+            SELECT id FROM parking_sessions
+            WHERE slot_id = ? AND (exit_time IS NULL OR exit_time = '')
+            LIMIT 1
+        `).get(slot.id);
+
+        if (isOccupied) continue;
+
+        // 2. Must not be reserved for a booking starting within the next 60 minutes
+        const upcomingReservation = database.prepare(`
+            SELECT id FROM pre_bookings
+            WHERE slot_id = ?
+              AND status = 'confirmed'
+              AND datetime(start_time) >= datetime(?)
+              AND datetime(start_time) <= datetime(?)
+            LIMIT 1
+        `).get(slot.id, nowStr, protectionWindowEnd);
+
+        if (upcomingReservation) continue; // protected for pre-booking!
+
+        return slot.id; // Eligible slot found
+    }
+
+    return null; // All slots either occupied or reserved
+}
+
+/**
+ * Check ANPR vehicle entry at barrier
+ * Verifies plate AND valid arrival window [start_time - 30m, start_time + 15m]
+ */
+function checkAnprEntry(carNumber, currentTime) {
+    const database = getDb();
+    expireOverdueBookings();
+
+    const nowStr = currentTime || moment().format('YYYY-MM-DD HH:mm:ss');
+
+    // 1. Look for confirmed pre-booking for this car
+    const booking = database.prepare(`
+        SELECT * FROM pre_bookings
+        WHERE car_number = ?
+          AND status = 'confirmed'
+        ORDER BY start_time ASC
+        LIMIT 1
+    `).get(carNumber);
+
+    if (booking) {
+        const start = moment(booking.start_time);
+        const now = moment(nowStr);
+        const diffMinutes = now.diff(start, 'minutes'); // negative if early, positive if after start
+
+        // Early: arriving more than 30 minutes before scheduled start time
+        if (diffMinutes < -30) {
+            return {
+                isPreBooked: true,
+                validWindow: false,
+                reason: 'early',
+                booking,
+                slotId: booking.slot_id,
+                message: `Arrival too early for booking ${booking.booking_code}. Scheduled for ${booking.start_time}. Check-in opens at ${start.clone().subtract(30, 'minutes').format('HH:mm')}.`
+            };
+        }
+
+        // Late: arrived past 15-minute grace period
+        if (diffMinutes > 15) {
+            // Mark expired
+            database.prepare("UPDATE pre_bookings SET status = 'expired' WHERE id = ?").run(booking.id);
+            return {
+                isPreBooked: true,
+                validWindow: false,
+                reason: 'expired',
+                booking,
+                slotId: null,
+                message: `Booking ${booking.booking_code} expired. Grace period (15 mins) exceeded.`
+            };
+        }
+
+        // Within valid arrival window [-30 mins, +15 mins]
+        return {
+            isPreBooked: true,
+            validWindow: true,
+            booking,
+            slotId: booking.slot_id,
+            message: `Welcome! Confirmed booking ${booking.booking_code}. Proceed to assigned Slot ${booking.slot_id}.`
+        };
+    }
+
+    // 2. No pre-booking found -> Treat as Walk-In vehicle
+    const walkInSlot = findAvailableSlotForWalkIn(nowStr);
+
+    if (walkInSlot) {
+        return {
+            isPreBooked: false,
+            validWindow: true,
+            slotId: walkInSlot,
+            message: `Walk-in entry granted. Allocated Slot ${walkInSlot}.`
+        };
+    }
+
+    return {
+        isPreBooked: false,
+        validWindow: false,
+        slotId: null,
+        message: 'Parking full. All remaining slots are reserved for advance bookings.'
+    };
+}
+
+/**
+ * Link an active session to a pre-booking and mark it checked_in
+ */
+function confirmPreBookingCheckIn(bookingId, sessionId) {
+    const database = getDb();
+    database.prepare(`
+        UPDATE pre_bookings
+        SET status = 'checked_in', session_id = ?
+        WHERE id = ?
+    `).run(sessionId, bookingId);
+}
+
+/**
+ * Get user pre-bookings
+ */
+function getPreBookingsByUser(carNumber) {
+    const database = getDb();
+    expireOverdueBookings();
+
+    return database.prepare(`
+        SELECT * FROM pre_bookings
+        WHERE car_number = ?
+        ORDER BY start_time DESC
+    `).all(carNumber);
+}
+
+/**
+ * Get pre-booking by code
+ */
+function getPreBookingByCode(bookingCode) {
+    const database = getDb();
+    return database.prepare('SELECT * FROM pre_bookings WHERE booking_code = ?').get(bookingCode);
+}
+
+/**
+ * Get pre-booking by ID
+ */
+function getPreBookingById(bookingId) {
+    const database = getDb();
+    return database.prepare('SELECT * FROM pre_bookings WHERE id = ?').get(bookingId);
+}
+
+/**
+ * Cancel pre-booking by user (strictly validates ownership)
+ */
+function cancelPreBooking(bookingId, carNumber) {
+    const database = getDb();
+    expireOverdueBookings();
+
+    const booking = database.prepare(
+        'SELECT * FROM pre_bookings WHERE id = ? AND car_number = ?'
+    ).get(bookingId, carNumber);
+
+    if (!booking) {
+        return { success: false, message: 'Booking not found or not owned by your vehicle' };
+    }
+
+    if (booking.status !== 'confirmed') {
+        return { success: false, message: `Cannot cancel booking with status: ${booking.status}` };
+    }
+
+    database.prepare("UPDATE pre_bookings SET status = 'cancelled' WHERE id = ?").run(bookingId);
+
+    return { success: true, message: `Booking ${booking.booking_code} cancelled successfully` };
+}
+
+/**
+ * Admin cancel pre-booking
+ */
+function adminCancelPreBooking(bookingId) {
+    const database = getDb();
+    const booking = database.prepare('SELECT * FROM pre_bookings WHERE id = ?').get(bookingId);
+
+    if (!booking) {
+        return { success: false, message: 'Booking not found' };
+    }
+
+    if (booking.status !== 'confirmed') {
+        return { success: false, message: `Cannot cancel booking with status: ${booking.status}` };
+    }
+
+    database.prepare("UPDATE pre_bookings SET status = 'cancelled' WHERE id = ?").run(bookingId);
+
+    return { success: true, message: `Booking ${booking.booking_code} cancelled by administrator` };
+}
+
+/**
+ * Get all pre-bookings (for admin)
+ */
+function getAllPreBookings(filterStatus = 'all') {
+    const database = getDb();
+    expireOverdueBookings();
+
+    if (filterStatus && filterStatus !== 'all') {
+        return database.prepare(
+            'SELECT * FROM pre_bookings WHERE status = ? ORDER BY start_time DESC'
+        ).all(filterStatus);
+    }
+
+    return database.prepare('SELECT * FROM pre_bookings ORDER BY start_time DESC').all();
+}
+
+/**
+ * Get number of available slots for a given time window
+ */
+function getSlotAvailabilityCount(startTime, endTime) {
+    const database = getDb();
+    expireOverdueBookings();
+
+    const slots = database.prepare('SELECT id FROM slots ORDER BY CAST(id AS INTEGER) ASC').all();
+    let availableCount = 0;
+
+    const now = moment().format('YYYY-MM-DD HH:mm:ss');
+    const isImmediate = moment(startTime).diff(moment(now), 'minutes') < 30;
+
+    for (const slot of slots) {
+        const conflict = database.prepare(`
+            SELECT id FROM pre_bookings
+            WHERE slot_id = ?
+              AND status IN ('confirmed', 'checked_in')
+              AND datetime(start_time, '-15 minutes') < datetime(?)
+              AND datetime(end_time, '+15 minutes') > datetime(?)
+            LIMIT 1
+        `).get(slot.id, endTime, startTime);
+
+        if (conflict) continue;
+
+        if (isImmediate) {
+            const occupied = database.prepare(`
+                SELECT id FROM parking_sessions
+                WHERE slot_id = ? AND (exit_time IS NULL OR exit_time = '')
+                LIMIT 1
+            `).get(slot.id);
+
+            if (occupied) continue;
+        }
+
+        availableCount++;
+    }
+
+    return {
+        availableCount,
+        totalSlots: slots.length
+    };
+}
+
 module.exports = {
     getDb,
     startCsvSync,
@@ -570,5 +1071,18 @@ module.exports = {
     findUser,
     findUserByCar,
     createUser,
-    bcrypt  // expose for auth controller
+    bcrypt,  // expose for auth controller
+    // Pre-Booking
+    expireOverdueBookings,
+    createPreBookingAtomic,
+    findAvailableSlotForWalkIn,
+    checkAnprEntry,
+    confirmPreBookingCheckIn,
+    getPreBookingsByUser,
+    getPreBookingByCode,
+    getPreBookingById,
+    cancelPreBooking,
+    adminCancelPreBooking,
+    getAllPreBookings,
+    getSlotAvailabilityCount
 };

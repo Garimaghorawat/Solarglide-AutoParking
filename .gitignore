@@ -8,3 +8,5 @@ server_log.txt
 capture_*.jpg
 db.json
 debug_*.js
+_backup_prebooking/
+__pycache__/

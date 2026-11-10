@@ -31,7 +31,7 @@
         <div class="stats-grid" id="statsGrid">
             <div class="stat-card blue">
                 <div class="stat-label">📊 Total Slots</div>
-                <div class="stat-value" id="statTotal">8</div>
+                <div class="stat-value" id="statTotal">6</div>
             </div>
             <div class="stat-card green">
                 <div class="stat-label">✅ Available</div>
@@ -51,6 +51,7 @@
         <div class="tab-nav">
             <button class="tab-btn active" onclick="switchTab('overview')">📋 Overview</button>
             <button class="tab-btn" onclick="switchTab('slots')">🅿️ All Slots</button>
+            <button class="tab-btn" onclick="switchTab('prebookings')">📅 Pre-Bookings</button>
             <button class="tab-btn" onclick="switchTab('gate')">🚧 Gate Events</button>
             <button class="tab-btn" onclick="switchTab('history')">📜 History</button>
         </div>
@@ -71,6 +72,43 @@
                 <div class="panel-title">🅿️ All Parking Slots</div>
                 <div class="admin-slots-grid" id="allSlotsGrid">
                     <!-- Filled by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Pre-Bookings -->
+        <div class="tab-content" id="tab-prebookings">
+            <div class="panel">
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+                    <div class="panel-title" style="margin-bottom:0;">📅 Advance Pre-Bookings</div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button class="btn btn-outline btn-sm active" id="filter-all" onclick="filterPreBookings('all', this)">All</button>
+                        <button class="btn btn-outline btn-sm" id="filter-confirmed" onclick="filterPreBookings('confirmed', this)">Confirmed</button>
+                        <button class="btn btn-outline btn-sm" id="filter-checked_in" onclick="filterPreBookings('checked_in', this)">Checked In</button>
+                        <button class="btn btn-outline btn-sm" id="filter-completed" onclick="filterPreBookings('completed', this)">Completed</button>
+                        <button class="btn btn-outline btn-sm" id="filter-cancelled" onclick="filterPreBookings('cancelled', this)">Cancelled</button>
+                        <button class="btn btn-outline btn-sm" id="filter-expired" onclick="filterPreBookings('expired', this)">Expired</button>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Booking Code</th>
+                                <th>Vehicle Plate</th>
+                                <th>Slot</th>
+                                <th>Start Time</th>
+                                <th>End Time</th>
+                                <th>Duration</th>
+                                <th>Est. Fee</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="preBookingsTable">
+                            <tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">Loading bookings...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -118,6 +156,16 @@
     <script>
         // ====== State ======
         let currentTheme = 'light';
+        const adminToken = localStorage.getItem('adminToken') || '';
+        let currentBookingFilter = 'all';
+
+        function adminAuthHeaders() {
+            const headers = { 'Content-Type': 'application/json' };
+            if (adminToken) {
+                headers['Authorization'] = 'Bearer ' + adminToken;
+            }
+            return headers;
+        }
 
         function toggleTheme() {
             currentTheme = currentTheme === 'light' ? 'dark' : 'light';
@@ -130,23 +178,29 @@
         function switchTab(name) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById('tab-' + name).classList.add('active');
-            event.target.classList.add('active');
+            const targetTab = document.getElementById('tab-' + name);
+            if (targetTab) targetTab.classList.add('active');
+            if (event && event.target) event.target.classList.add('active');
         }
 
         // ====== Data Loading ======
         async function loadDashboard() {
             try {
-                const [slots, logs, gateEvents] = await Promise.all([
+                const [slots, logs, gateEvents, preBookingsRes] = await Promise.all([
                     fetch('/api/slots').then(r => r.json()),
                     fetch('/api/logs').then(r => r.json()),
-                    fetch('/api/gate-events').then(r => r.json())
+                    fetch('/api/gate-events').then(r => r.json()),
+                    fetch(`/api/pre-booking/admin/all?status=${currentBookingFilter}`, { headers: adminAuthHeaders() })
+                        .then(r => r.json()).catch(() => ({ success: false, bookings: [] }))
                 ]);
 
                 renderStats(slots, logs);
                 renderSlotGrids(slots);
                 renderGateEvents(gateEvents);
                 renderHistory(logs);
+                if (preBookingsRes.success && preBookingsRes.bookings) {
+                    renderPreBookings(preBookingsRes.bookings);
+                }
             } catch (err) {
                 console.error('Failed to load dashboard:', err);
             }
@@ -164,30 +218,128 @@
 
         // ====== Render Slot Cards ======
         function renderSlotGrids(slots) {
-            const renderCard = (slot) => `
-                <div class="admin-slot-card ${slot.status}">
-                    <div class="admin-slot-header">
-                        <div class="admin-slot-id">
-                            <span class="icon">${slot.status === 'booked' ? '🚗' : '🅿️'}</span>
-                            ${slot.id}
-                        </div>
-                        <div class="status-pill ${slot.status}">
-                            <span>●</span>
-                            ${slot.status === 'available' ? 'Available' : 'Occupied'}
-                        </div>
-                    </div>
-                    ${slot.entry ? `
+            const renderCard = (slot) => {
+                const isBooked = slot.status === 'booked';
+                const isReserved = slot.status === 'reserved';
+                const statusLabel = isBooked ? 'Occupied' : isReserved ? 'Reserved' : 'Available';
+                const icon = isBooked ? '🚗' : isReserved ? '📅' : '🅿️';
+
+                let detailHtml = '<div class="admin-slot-detail" style="opacity:0.5;">No vehicle parked</div>';
+                if (slot.entry) {
+                    detailHtml = `
                         <div class="admin-slot-detail">🔖 ${slot.entry['Number Plate']}</div>
                         <div class="admin-slot-detail">🕐 ${slot.entry['Entry Time']}</div>
-                    ` : `
-                        <div class="admin-slot-detail" style="opacity:0.5;">No vehicle parked</div>
-                    `}
-                </div>
-            `;
+                    `;
+                } else if (slot.reservation) {
+                    detailHtml = `
+                        <div class="admin-slot-detail" style="color:var(--warning); font-weight:700;">🔖 Reserved: ${slot.reservation['Number Plate']}</div>
+                        <div class="admin-slot-detail" style="color:var(--text-muted);">🕐 Starts: ${slot.reservation['Start Time']}</div>
+                        <div class="admin-slot-detail" style="font-size:0.7rem; color:var(--text-dim);">${slot.reservation['Booking Code']}</div>
+                    `;
+                }
+
+                return `
+                    <div class="admin-slot-card ${slot.status}">
+                        <div class="admin-slot-header">
+                            <div class="admin-slot-id">
+                                <span class="icon">${icon}</span>
+                                ${slot.id}
+                            </div>
+                            <div class="status-pill ${slot.status}">
+                                <span>●</span>
+                                ${statusLabel}
+                            </div>
+                        </div>
+                        ${detailHtml}
+                    </div>
+                `;
+            };
 
             const html = slots.map(renderCard).join('');
             document.getElementById('adminSlotGrid').innerHTML = html;
             document.getElementById('allSlotsGrid').innerHTML = html;
+        }
+
+        // ====== Render Pre-Bookings Table ======
+        function renderPreBookings(bookings) {
+            const tbody = document.getElementById('preBookingsTable');
+            if (!tbody) return;
+
+            if (bookings.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">No pre-bookings found matching filter.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = bookings.map(b => {
+                const isConfirmed = b.status === 'confirmed';
+                const statusColor = b.status === 'confirmed' ? 'var(--warning)' :
+                                    b.status === 'checked_in' ? 'var(--primary)' :
+                                    b.status === 'completed' ? 'var(--success)' : 'var(--text-muted)';
+                const statusBadge = `
+                    <span style="display:inline-block; font-size:0.75rem; font-weight:700; color:${statusColor}; border:1px solid ${statusColor}; background:rgba(0,0,0,0.03); padding:2px 8px; border-radius:12px;">
+                        ${b.status.toUpperCase().replace('_', ' ')}
+                    </span>
+                `;
+
+                return `
+                    <tr>
+                        <td><strong style="color:var(--primary);">${b.booking_code}</strong></td>
+                        <td><strong>${b.car_number}</strong></td>
+                        <td><span style="font-weight:700;">Slot ${b.slot_id}</span></td>
+                        <td>${b.start_time}</td>
+                        <td>${b.end_time}</td>
+                        <td>${b.duration_hours}h</td>
+                        <td>₹${b.estimated_fee}</td>
+                        <td>${statusBadge}</td>
+                        <td>
+                            ${isConfirmed ? `
+                                <button class="btn btn-sm" onclick="adminCancelBooking(${b.id}, '${b.booking_code}')" style="background:var(--danger-dim); color:var(--danger); border:1px solid var(--danger); font-size:0.75rem; padding:4px 10px;">
+                                    ✖ Cancel
+                                </button>
+                            ` : '—'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function filterPreBookings(status, btn) {
+            currentBookingFilter = status;
+            document.querySelectorAll('#tab-prebookings .btn-outline').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+
+            try {
+                const res = await fetch(`/api/pre-booking/admin/all?status=${status}`, { headers: adminAuthHeaders() });
+                const data = await res.json();
+                if (data.success && data.bookings) {
+                    renderPreBookings(data.bookings);
+                }
+            } catch (err) {
+                console.error('Filter error:', err);
+            }
+        }
+
+        async function adminCancelBooking(bookingId, code) {
+            if (!confirm(`Are you sure you want to cancel reservation ${code} as administrator?`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/pre-booking/admin/cancel', {
+                    method: 'POST',
+                    headers: adminAuthHeaders(),
+                    body: JSON.stringify({ bookingId })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert(`Booking ${code} cancelled.`);
+                    loadDashboard();
+                } else {
+                    alert(data.message || 'Failed to cancel booking');
+                }
+            } catch (err) {
+                alert('Server error cancelling booking');
+            }
         }
 
         // ====== Gate Events ======
@@ -231,6 +383,7 @@
         }
 
         function logout() {
+            localStorage.removeItem('adminToken');
             window.location.href = 'login.html';
         }
 

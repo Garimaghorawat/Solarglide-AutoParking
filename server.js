@@ -19,6 +19,11 @@ try {
   // CSV is the single source of truth — sync it to DB in real-time
   database.startCsvSync();
 
+  // Periodic booking auto-expiry check (runs every 60 seconds)
+  setInterval(() => {
+    database.expireOverdueBookings();
+  }, 60000);
+
   console.log('Initializing app...');
   const app = express();
   const PORT = process.env.PORT || 3000;

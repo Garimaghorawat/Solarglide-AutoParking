@@ -381,6 +381,19 @@ header {
   opacity: 1;
 }
 
+.slot-card.reserved {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: var(--warning-dim);
+}
+
+.slot-card.reserved .slot-id {
+  color: var(--warning);
+}
+
+.slot-card.reserved .car-icon {
+  opacity: 0.9;
+}
+
 .slot-card.my-slot {
   border-color: var(--primary);
   background: var(--primary-dim);
@@ -424,6 +437,11 @@ header {
 .slot-badge.booked-badge {
   background: var(--danger-dim);
   color: var(--danger);
+}
+
+.slot-badge.reserved-badge {
+  background: var(--warning-dim);
+  color: var(--warning);
 }
 
 .slot-badge.my-badge {
@@ -473,6 +491,10 @@ header {
   border-left: 4px solid var(--danger);
 }
 
+.admin-slot-card.reserved {
+  border-left: 4px solid var(--warning);
+}
+
 .admin-slot-header {
   display: flex;
   justify-content: space-between;
@@ -510,6 +532,11 @@ header {
 .status-pill.booked {
   background: var(--danger-dim);
   color: var(--danger);
+}
+
+.status-pill.reserved {
+  background: var(--warning-dim);
+  color: var(--warning);
 }
 
 .admin-slot-detail {

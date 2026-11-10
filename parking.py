@@ -16,7 +16,8 @@ UPI_ID = "8017606494@superyes"
 RATE_PER_SECOND = 1
 
 CSV_FILE = "parking_log.csv"
-TOTAL_SLOTS = 3
+TOTAL_SLOTS = 6
+BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "http://localhost:3000/api")
 
 ENTRY_CAMERA_INDEX = 1
 EXIT_CAMERA_INDEX = 2
@@ -122,22 +123,66 @@ def handle_entry_auto():
         return
 
     if plate in active_sessions:
-        print("⚠ Car already inside.")
+        print(f"⚠ Car {plate} already inside.")
         return
 
-    slot = assign_slot()
+    # Check with Node.js backend for pre-booking verification & smart slot allocation
+    slot = None
+    booking_id = None
+    is_prebooked = False
+
+    try:
+        res = requests.post(
+            f"{BACKEND_API_URL}/anpr/check-entry",
+            json={"carNumber": plate},
+            timeout=3
+        )
+        if res.status_code == 200:
+            data = res.json()
+            if not data.get("validWindow", False):
+                print(f"❌ ENTRY DENIED for {plate}: {data.get('message', 'Not allowed to enter')}")
+                return
+
+            slot = data.get("slotId")
+            is_prebooked = data.get("isPreBooked", False)
+            if is_prebooked and data.get("booking"):
+                booking_id = data["booking"]["id"]
+                print(f"🌟 PRE-BOOKED VEHICLE: {plate} -> Slot {slot} (Booking: {data['booking']['booking_code']})")
+            else:
+                print(f"🚗 WALK-IN VEHICLE: {plate} -> Allocated Slot {slot}")
+        else:
+            err_msg = res.json().get("message", "Entry check failed")
+            print(f"❌ ENTRY REJECTED BY BACKEND: {err_msg}")
+            return
+    except Exception as e:
+        print(f"⚠️ Backend offline or unreachable ({e}) — SAFE FALLBACK ENGAGED")
+        print("⛔ Auto-allocation halted to protect reservations. Please contact parking operator.")
+        return
+
     if slot is None:
-        print("❌ Parking Full")
+        print("❌ Parking Full (all remaining slots reserved or occupied)")
         return
 
+    slot_int = int(slot)
+    slots[slot_int] = True
     entry_time = datetime.now()
-    active_sessions[plate] = {"entry_time": entry_time, "slot": slot}
+    active_sessions[plate] = {"entry_time": entry_time, "slot": slot_int}
 
     with open(CSV_FILE, mode="a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([plate, entry_time.strftime("%Y-%m-%d %H:%M:%S"), "", slot, "", ""])
 
-    print(f"✅ ENTRY SUCCESS | Plate: {plate} | Slot: {slot}")
+    # Confirm entry with backend so pre-booking is officially marked checked_in and linked
+    try:
+        requests.post(
+            f"{BACKEND_API_URL}/anpr/confirm-entry",
+            json={"carNumber": plate, "slotId": slot, "bookingId": booking_id},
+            timeout=3
+        )
+    except Exception:
+        pass  # CSV watcher also links it on file sync
+
+    print(f"✅ ENTRY SUCCESS | Plate: {plate} | Slot: {slot} | Pre-booked: {is_prebooked}")
 
 # ---------- EXIT LOGIC ----------
 def handle_exit_auto():

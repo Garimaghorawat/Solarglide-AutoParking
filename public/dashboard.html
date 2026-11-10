@@ -19,6 +19,7 @@
                 <span class="name" id="headerCarNum">—</span>
                 <span class="role">User</span>
             </div>
+            <button class="btn btn-primary btn-sm" onclick="openPreBookingModal()">📅 Pre-Book a Spot</button>
             <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
         </div>
     </header>
@@ -29,7 +30,7 @@
         <div class="stats-grid four-col">
             <div class="stat-card blue">
                 <div class="stat-label">🅿️ Total Slots</div>
-                <div class="stat-value" id="totalSlots">8</div>
+                <div class="stat-value" id="totalSlots">6</div>
             </div>
             <div class="stat-card green">
                 <div class="stat-label">✅ Available</div>
@@ -71,7 +72,8 @@
         <div id="emptyState" class="empty-state" style="display:none;">
             <div class="icon">🅿️</div>
             <h3>No Active Parking</h3>
-            <p>Your car is not currently parked. Drive in and your sensor will register you!</p>
+            <p>Your car is not currently parked. Drive in, or reserve a guaranteed slot in advance!</p>
+            <button class="btn btn-primary" style="margin-top:14px;" onclick="openPreBookingModal()">📅 Pre-Book a Slot Now</button>
         </div>
 
         <!-- Two-column layout: Slots + Info -->
@@ -80,16 +82,30 @@
             <!-- Slot Grid -->
             <div class="content-main">
                 <div class="section-header">
-                    <div class="section-title">🚗 Parking Slots</div>
-                    <div style="display:flex;align-items:center;gap:12px;">
+                    <div class="section-title">🚗 Parking Slots (Slots 1–6)</div>
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                         <span class="legend-dot" style="--c:var(--success);">Available</span>
                         <span class="legend-dot" style="--c:var(--danger);">Occupied</span>
+                        <span class="legend-dot" style="--c:var(--warning);">Reserved</span>
                         <span class="legend-dot" style="--c:var(--primary);">Yours</span>
                     </div>
                 </div>
 
                 <div class="parking-grid" id="slotGrid">
                     <!-- Filled by JS -->
+                </div>
+
+                <!-- My Pre-Bookings List -->
+                <div class="panel" style="margin-top:24px;" id="preBookingsPanel">
+                    <div class="section-header" style="margin-bottom:12px;">
+                        <div class="panel-title" style="margin-bottom:0;">📅 My Pre-Bookings</div>
+                        <button class="btn btn-primary btn-sm" onclick="openPreBookingModal()">+ New Booking</button>
+                    </div>
+                    <div id="preBookingsList">
+                        <div style="text-align:center; padding:16px; color:var(--text-muted); font-size:0.85rem;">
+                            Loading bookings...
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -230,6 +246,110 @@
                 </div>
             </div>
 
+        </div>
+    </div>
+
+    <!-- Pre-Booking Modal -->
+    <div class="modal" id="preBookingModal">
+        <div class="modal-content" style="max-width:440px;">
+            <button class="close-btn" onclick="closePreBookingModal()">&times;</button>
+            <h2 style="font-size:1.25rem; margin-bottom:6px; color:var(--text);">📅 Pre-Book a Parking Spot</h2>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:18px;">
+                Guaranteed slot allocation with 15-minute arrival grace period.
+            </p>
+
+            <form id="preBookingForm" onsubmit="handlePreBookingSubmit(event)">
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label style="display:block; font-size:0.8rem; font-weight:600; margin-bottom:6px;">Car Number / Number Plate</label>
+                    <input type="text" id="bookingCarPlate" readonly style="width:100%; padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--glass-border); background:var(--bg-primary); font-weight:700; color:var(--primary);">
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                    <div class="form-group">
+                        <label style="display:block; font-size:0.8rem; font-weight:600; margin-bottom:6px;">Arrival Date</label>
+                        <input type="date" id="bookingDate" required onchange="updateEstimatedFee()" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--glass-border); font-family:inherit;">
+                    </div>
+                    <div class="form-group">
+                        <label style="display:block; font-size:0.8rem; font-weight:600; margin-bottom:6px;">Arrival Time</label>
+                        <input type="time" id="bookingTime" required onchange="updateEstimatedFee()" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--glass-border); font-family:inherit;">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label style="display:block; font-size:0.8rem; font-weight:600; margin-bottom:6px;">Expected Duration</label>
+                    <select id="bookingDuration" onchange="updateEstimatedFee()" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--glass-border); font-family:inherit;">
+                        <option value="1">1 Hour</option>
+                        <option value="2" selected>2 Hours</option>
+                        <option value="3">3 Hours</option>
+                        <option value="4">4 Hours</option>
+                        <option value="6">6 Hours</option>
+                        <option value="8">8 Hours</option>
+                        <option value="12">12 Hours</option>
+                        <option value="24">24 Hours (Full Day)</option>
+                    </select>
+                </div>
+
+                <!-- Fee Estimate & Slot Guarantee Banner -->
+                <div style="background:var(--primary-dim); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem;">
+                        <span style="color:var(--text-muted);">Estimated Parking Fee:</span>
+                        <span style="font-weight:800; font-size:1.1rem; color:var(--primary);" id="bookingEstimatedFee">₹40</span>
+                    </div>
+                    <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
+                        ₹20 Base Rate + ₹10/hr · Paid upon exit via Razorpay
+                    </div>
+                </div>
+
+                <div id="bookingError" style="display:none; color:var(--danger); font-size:0.8rem; margin-bottom:12px; background:var(--danger-dim); padding:8px 12px; border-radius:var(--radius-xs);"></div>
+
+                <button type="submit" id="bookSubmitBtn" class="btn btn-primary" style="width:100%; justify-content:center; padding:12px;">
+                    ⚡ Auto-Allocate & Confirm Booking
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Booking Pass / Confirmation Modal -->
+    <div class="modal" id="bookingPassModal">
+        <div class="modal-content" style="max-width:420px; text-align:center;">
+            <button class="close-btn" onclick="closePassModal()">&times;</button>
+            <div style="font-size:2.5rem; margin-bottom:8px;">🎟️</div>
+            <h2 style="font-size:1.25rem; color:var(--success); margin-bottom:4px;">Booking Confirmed!</h2>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:16px;">
+                Your slot has been automatically allocated.
+            </p>
+
+            <div style="background:var(--bg-primary); border:2px dashed var(--glass-border); border-radius:var(--radius); padding:20px; margin-bottom:16px;">
+                <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted);">Booking Pass Code</div>
+                <div style="font-size:1.6rem; font-weight:900; color:var(--primary); margin:4px 0 12px;" id="passBookingCode">SG-00000</div>
+
+                <div style="display:inline-block; background:white; padding:10px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.1); margin-bottom:12px;">
+                    <img id="passQrImage" src="" alt="Booking QR" style="width:160px; height:160px; display:block;">
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; text-align:left; font-size:0.8rem; background:var(--bg-secondary); padding:10px 14px; border-radius:8px;">
+                    <div>
+                        <span style="color:var(--text-muted); display:block; font-size:0.7rem;">Allocated Slot</span>
+                        <strong style="color:var(--primary); font-size:1rem;" id="passSlotId">Slot 1</strong>
+                    </div>
+                    <div>
+                        <span style="color:var(--text-muted); display:block; font-size:0.7rem;">Vehicle Plate</span>
+                        <strong id="passCarPlate">—</strong>
+                    </div>
+                    <div style="grid-column:1 / -1; margin-top:4px;">
+                        <span style="color:var(--text-muted); display:block; font-size:0.7rem;">Arrival Window</span>
+                        <span style="font-size:0.75rem; font-weight:600;" id="passTimeWindow">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:16px;">
+                📷 The ANPR camera will detect your plate at the gate. If unreadable, scan this QR code at the barrier.
+            </p>
+
+            <button class="btn btn-primary" style="width:100%; justify-content:center;" onclick="closePassModal()">
+                Done
+            </button>
         </div>
     </div>
 

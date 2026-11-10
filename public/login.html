@@ -93,9 +93,11 @@
 
                 if (data.success) {
                     if (data.role === 'admin') {
+                        if (data.token) localStorage.setItem('adminToken', data.token);
                         window.location.href = 'admin.html';
                     } else {
                         localStorage.setItem('carNumber', body.identifier);
+                        if (data.token) localStorage.setItem('authToken', data.token);
                         window.location.href = 'dashboard.html';
                     }
                 } else {
