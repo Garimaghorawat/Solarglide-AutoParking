@@ -6,6 +6,74 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SolarGlide — Admin</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+
+    /* ===== SolarGlide Admin: Burgundy Dark Mode ===== */
+    :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg-primary: #24131B;
+        --bg-secondary: #321B26;
+        --bg-card: #3B222E;
+        --bg-card-hover: #482A37;
+        --surface: rgba(50, 27, 38, 0.96);
+        --glass-border: rgba(201, 154, 131, 0.24);
+        --primary: #C99A83;
+        --primary-dim: rgba(201, 154, 131, 0.16);
+        --primary-dark: #E6A23C;
+        --success: #79A88B;
+        --success-dim: rgba(121, 168, 139, 0.16);
+        --danger: #E47D7A;
+        --danger-dim: rgba(228, 125, 122, 0.16);
+        --warning: #E6A23C;
+        --warning-dim: rgba(230, 162, 60, 0.16);
+        --purple: #B89ACB;
+        --purple-dim: rgba(184, 154, 203, 0.16);
+        --blue: #8295BE;
+        --blue-dim: rgba(130, 149, 190, 0.16);
+        --orange: #D98276;
+        --text: #FFF7F2;
+        --text-muted: #D3BDB5;
+        --text-dim: #B49A92;
+        --shadow: 0 1px 3px rgba(0,0,0,.18), 0 4px 16px rgba(0,0,0,.16);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,.24);
+    }
+
+    :root[data-theme="dark"] body {
+        background: var(--bg-primary);
+        color: var(--text);
+    }
+
+    :root[data-theme="dark"] header,
+    :root[data-theme="dark"] .panel,
+    :root[data-theme="dark"] .tab-nav,
+    :root[data-theme="dark"] .admin-slot-card,
+    :root[data-theme="dark"] table,
+    :root[data-theme="dark"] .modal-content {
+        background-color: var(--bg-secondary);
+        color: var(--text);
+        border-color: var(--glass-border);
+    }
+
+    :root[data-theme="dark"] .tab-btn { color: var(--text-muted); }
+    :root[data-theme="dark"] .tab-btn.active {
+        background: #792F48;
+        color: #FFFDF9;
+    }
+    :root[data-theme="dark"] th {
+        background: #482A37;
+        color: #FFF7F2;
+    }
+    :root[data-theme="dark"] td {
+        color: var(--text-muted);
+        border-color: var(--glass-border);
+    }
+    :root[data-theme="dark"] .theme-toggle {
+        background: #482A37;
+        color: #E6A23C;
+        border-color: var(--glass-border);
+    }
+
+    </style>
 </head>
 
 <body>
@@ -155,7 +223,7 @@
 
     <script>
         // ====== State ======
-        let currentTheme = 'light';
+        let currentTheme = localStorage.getItem('solarglide-admin-theme') || 'light';
         const adminToken = localStorage.getItem('adminToken') || '';
         let currentBookingFilter = 'all';
 
@@ -167,12 +235,24 @@
             return headers;
         }
 
-        function toggleTheme() {
-            currentTheme = currentTheme === 'light' ? 'dark' : 'light';
-            document.documentElement.setAttribute('data-theme', currentTheme === 'light' ? 'light' : '');
-            if (currentTheme === 'dark') document.documentElement.removeAttribute('data-theme');
-            document.querySelector('.theme-toggle').textContent = currentTheme === 'light' ? '🌙' : '☀️';
+        function applyTheme(theme) {
+            currentTheme = theme === 'dark' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            localStorage.setItem('solarglide-admin-theme', currentTheme);
+            const toggle = document.querySelector('.theme-toggle');
+            if (toggle) {
+                toggle.textContent = currentTheme === 'light' ? '🌙' : '☀️';
+                toggle.setAttribute('aria-label', currentTheme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+                toggle.setAttribute('title', currentTheme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+            }
         }
+
+        function toggleTheme() {
+            applyTheme(currentTheme === 'light' ? 'dark' : 'light');
+        }
+
+        // Restore the saved admin theme when the page opens.
+        applyTheme(currentTheme);
 
         // ====== Tabs ======
         function switchTab(name) {

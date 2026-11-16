@@ -6,40 +6,49 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 /* === CSS Variables — Light Blue Theme === */
+
 :root {
-  --bg-primary: #eef2f7;
-  --bg-secondary: #ffffff;
-  --bg-card: #ffffff;
-  --bg-card-hover: #f8fafc;
-  --surface: rgba(255, 255, 255, 0.95);
-  --glass-border: rgba(59, 130, 246, 0.12);
+  /* Backgrounds */
+  --bg-primary: #FBF5F2;
+  --bg-secondary: #FFFDFC;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #F8EAE8;
+  --surface: rgba(255, 253, 252, 0.96);
+  --glass-border: rgba(121, 47, 72, 0.16);
 
-  --primary: #3b82f6;
-  --primary-dim: rgba(59, 130, 246, 0.1);
-  --primary-dark: #2563eb;
-  --success: #10b981;
-  --success-dim: rgba(16, 185, 129, 0.1);
-  --danger: #ef4444;
-  --danger-dim: rgba(239, 68, 68, 0.1);
-  --warning: #f59e0b;
-  --warning-dim: rgba(245, 158, 11, 0.1);
-  --purple: #8b5cf6;
-  --purple-dim: rgba(139, 92, 246, 0.1);
-  --blue: #3b82f6;
-  --blue-dim: rgba(59, 130, 246, 0.1);
-  --orange: #f97316;
+  /* Main Brand Colours */
+  --primary: #792F48;
+  --primary-dim: rgba(121, 47, 72, 0.10);
+  --primary-dark: #401D2A;
 
-  --text: #1e293b;
-  --text-muted: #64748b;
-  --text-dim: #94a3b8;
+  /* Status Colours */
+  --success: #56836B;
+  --success-dim: rgba(86, 131, 107, 0.12);
+  --danger: #D65B60;
+  --danger-dim: rgba(214, 91, 96, 0.10);
+  --warning: #D99A32;
+  --warning-dim: rgba(217, 154, 50, 0.12);
+  --purple: #94708D;
+  --purple-dim: rgba(148, 112, 141, 0.12);
+  --blue: #668FA5;
+  --blue-dim: rgba(102, 143, 165, 0.12);
+  --orange: #D98245;
 
+  /* Text */
+  --text: #35232B;
+  --text-muted: #806C72;
+  --text-dim: #AA969A;
+
+  /* Styling */
   --radius: 16px;
   --radius-sm: 10px;
   --radius-xs: 6px;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(59, 130, 246, 0.06);
-  --shadow-lg: 0 8px 32px rgba(59, 130, 246, 0.1);
+  --shadow: 0 2px 8px rgba(64, 29, 42, 0.06),
+            0 5px 18px rgba(121, 47, 72, 0.05);
+  --shadow-lg: 0 10px 32px rgba(64, 29, 42, 0.12);
   --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
 
 /* === Reset & Base === */
 * {
@@ -1255,4 +1264,52 @@ tr:hover {
   .admin-slots-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ==========================================
+   SolarGlide — Dashboard Stats & Rates Polish
+   ========================================== */
+
+/* Top dashboard statistic cards */
+.stats-grid .stat-card:nth-child(1) {
+  background: linear-gradient(135deg, #792F48, #401D2A) !important;
+}
+
+.stats-grid .stat-card:nth-child(2) {
+  background: linear-gradient(135deg, #6E987C, #456F58) !important;
+}
+
+.stats-grid .stat-card:nth-child(3) {
+  background: linear-gradient(135deg, #D98276, #B95E59) !important;
+}
+
+.stats-grid .stat-card:nth-child(4) {
+  background: linear-gradient(135deg, #6579A6, #465B85) !important;
+}
+
+/* Soft rose-gold accent on stats */
+.stats-grid .stat-card {
+  border: 1px solid rgba(201, 154, 131, 0.35);
+  box-shadow: 0 5px 16px rgba(64, 29, 42, 0.10);
+}
+
+/* Parking Rates and sidebar panels */
+.fee-panel,
+.content-sidebar > * {
+  background: linear-gradient(145deg, #FFFDFC, #F8EAE8) !important;
+  border: 1px solid rgba(201, 154, 131, 0.45) !important;
+  box-shadow: 0 5px 18px rgba(64, 29, 42, 0.07);
+}
+
+/* Rates panel icons */
+.fee-icon {
+  background: rgba(201, 154, 131, 0.20) !important;
+  color: #792F48;
+}
+
+/* Rates formula */
+.fee-formula {
+  background: rgba(201, 154, 131, 0.18) !important;
+  border-color: #C99A83 !important;
+  color: #792F48 !important;
 }
